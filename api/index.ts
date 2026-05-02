@@ -49,9 +49,9 @@ async function tryGeminiModels(
   imageMime?: string
 ): Promise<string> {
   const models = [
-    'gemini-1.5-flash-8b',   // 1500 req/day free — highest quota
-    'gemini-2.0-flash-lite', // fallback
-    'gemini-2.0-flash',      // last resort
+    'gemini-2.0-flash-lite',       // highest free quota
+    'gemini-2.0-flash',            // fallback
+    'gemini-1.5-flash',            // last resort
   ];
 
   let lastError: any;

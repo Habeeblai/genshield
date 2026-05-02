@@ -20,6 +20,12 @@ export default defineConfig(({ mode }) => {
     ],
     build: {
       target: 'esnext',
+      rollupOptions: {
+        external: (id) => id.startsWith('node:'),
+      },
+    },
+    optimizeDeps: {
+      exclude: ['api'],
     },
     define: {
       global: 'window.__app_global',
