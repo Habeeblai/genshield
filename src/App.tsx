@@ -155,8 +155,6 @@ export default function App() {
   const handleScan = async () => {
     if (!client)          { setError({ kind: 'network', title: 'Not Connected', message: 'GenLayer client is not ready yet.', hint: 'Wait a moment or check the RPC URL in Settings.' }); return; }
     if (!contractAddress) { setError({ kind: 'general', title: 'No Contract Address', message: 'The ScamDetector contract address is not configured.', hint: 'Open Settings and paste your deployed contract address.' }); setShowSettings(true); return; }
-    if (rpcStatus === 'failed') { setError({ kind: 'network', title: 'RPC Disconnected', message: 'Cannot reach the GenLayer network.', hint: 'Check the RPC URL in Settings and ensure it matches where your contract is deployed.' }); return; }
-
     setIsScanning(true);
     setError(null);
     setResult(null);
@@ -183,8 +181,15 @@ export default function App() {
       setScanStep('Sending to GenLayer validators…');
       addLog(`Calling ${fn}() on contract ${contractAddress.slice(0,10)}… arg length: ${arg.length}`);
 
+      // Re-create client fresh before each contract call to avoid stale state
+      // (especially important for image tab which has a long Gemini pre-step)
+      const { createClient: mkClient, createAccount: mkAccount } = await import('genlayer-js');
+      const { studionet: snet, testnetAsimov: tnet } = await import('genlayer-js/chains');
+      const freshChain = rpcUrl.includes('testnet') ? tnet : snet;
+      const freshClient = mkClient({ chain: freshChain, endpoint: rpcUrl, account: mkAccount() });
+
       // Contract methods use @gl.public.write — submit as a transaction
-      const txHash = await client.writeContract({
+      const txHash = await freshClient.writeContract({
         address:      contractAddress as `0x${string}`,
         functionName: fn,
         args:         [arg],
@@ -195,7 +200,7 @@ export default function App() {
       setScanStep('Waiting for validator consensus…');
 
       const { TransactionStatus } = await import('genlayer-js/types');
-      const receipt = await client.waitForTransactionReceipt({
+      const receipt = await freshClient.waitForTransactionReceipt({
         hash:     txHash,
         status:   TransactionStatus.FINALIZED,
         retries:  60,
