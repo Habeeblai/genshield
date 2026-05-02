@@ -233,7 +233,9 @@ export default function App() {
       addLog('Verdict: ' + parsed.classification + ' (' + parsed.confidence + '% confidence)');
     } catch (err: any) {
       const raw: string = err.message || 'Unexpected error.';
-      addLog('Error: ' + raw.slice(0, 120));
+      // Log full error to console AND the in-app log so we can see it
+      console.error('[GenShield] Full error:', err);
+      addLog('ERR type=' + (err?.constructor?.name || 'unknown') + ' msg=' + raw.slice(0, 200));
 
       // Quota / rate limit error
       if (err.kind === 'quota' || raw.includes('429') || raw.includes('quota') || raw.includes('Too Many Requests')) {
