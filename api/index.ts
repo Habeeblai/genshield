@@ -39,6 +39,50 @@ app.get('/api/health', (_req: Request, res: Response) => {
 });
 
 // ── AI Analysis (text + image) ────────────────────────────────────────────────
+// Tries multiple free-tier models in order until one succeeds.
+// Priority: gemini-1.5-flash-8b (highest free quota) → gemini-2.0-flash-lite → gemini-2.0-flash
+
+async function tryGeminiModels(
+  genAIClient: any,
+  prompt: string,
+  imageBuffer?: Buffer,
+  imageMime?: string
+): Promise<string> {
+  const models = [
+    'gemini-1.5-flash-8b',   // 1500 req/day free — highest quota
+    'gemini-2.0-flash-lite', // fallback
+    'gemini-2.0-flash',      // last resort
+  ];
+
+  let lastError: any;
+  for (const modelName of models) {
+    try {
+      const model = genAIClient.getGenerativeModel({ model: modelName });
+      let result;
+      if (imageBuffer && imageMime) {
+        result = await model.generateContent([
+          prompt,
+          { inlineData: { data: imageBuffer.toString('base64'), mimeType: imageMime } },
+        ]);
+      } else {
+        result = await model.generateContent(prompt);
+      }
+      const text = (await result.response).text();
+      console.log(`[analyze] Success with model: ${modelName}`);
+      return text;
+    } catch (err: any) {
+      lastError = err;
+      const is429 = err.message?.includes('429') || err.message?.includes('quota') || err.message?.includes('Too Many Requests');
+      if (is429) {
+        console.warn(`[analyze] ${modelName} quota exceeded, trying next model…`);
+        continue; // try next model
+      }
+      throw err; // non-quota error — don't retry
+    }
+  }
+  throw lastError; // all models exhausted
+}
+
 app.post('/api/analyze', upload.single('image'), async (req: MulterRequest, res: Response) => {
   try {
     if (!genAI) {
@@ -46,27 +90,18 @@ app.post('/api/analyze', upload.single('image'), async (req: MulterRequest, res:
     }
 
     const { prompt, type } = req.body;
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-lite' });
 
-    let result;
+    let text: string;
     if (type === 'image' && req.file) {
-      result = await model.generateContent([
-        prompt,
-        {
-          inlineData: {
-            data:     req.file.buffer.toString('base64'),
-            mimeType: req.file.mimetype,
-          },
-        },
-      ]);
+      text = await tryGeminiModels(genAI, prompt, req.file.buffer, req.file.mimetype);
     } else {
-      result = await model.generateContent(prompt);
+      text = await tryGeminiModels(genAI, prompt);
     }
 
-    const text = (await result.response).text();
     res.json({ text });
   } catch (error: any) {
     console.error('AI analysis error:', error);
+    // Pass a clean error message — the frontend will show a friendly UI
     res.status(500).json({ error: error.message || 'Failed to analyze content' });
   }
 });
