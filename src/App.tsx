@@ -4,8 +4,8 @@ import { studionet, testnetAsimov } from 'genlayer-js/chains';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   ShieldAlert, ShieldCheck, ShieldQuestion, AlertTriangle,
-  Link2, FileText, ImageIcon, Loader2, Settings, RefreshCw,
-  Upload, X, Zap, Terminal, ChevronDown
+  Link2, FileText, ImageIcon, Loader2,
+  Upload, X, Zap, Terminal
 } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -56,11 +56,8 @@ export default function App() {
   const [error,            setError]            = useState<AppError | null>(null);
   const [client,           setClient]           = useState<any>(null);
   const [rpcStatus,        setRpcStatus]        = useState<'checking' | 'connected' | 'failed'>('checking');
-  const [showSettings,     setShowSettings]     = useState(false);
-  const [rpcUrl,           setRpcUrl]           = useState(DEFAULT_RPC_URL);
-  const [contractAddress,  setContractAddress]  = useState(DEFAULT_CONTRACT);
-  const [rpcInput,         setRpcInput]         = useState(DEFAULT_RPC_URL);
-  const [contractInput,    setContractInput]    = useState(DEFAULT_CONTRACT);
+  const rpcUrl = DEFAULT_RPC_URL;
+  const contractAddress = DEFAULT_CONTRACT;
   const [log,              setLog]              = useState<string[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -95,19 +92,12 @@ export default function App() {
     } catch (err: any) {
       setRpcStatus('failed');
       addLog(`Init error: ${err.message}`);
-      setError({ kind: 'network', title: 'Connection Failed', message: 'Could not connect to GenLayer.', hint: 'Check the RPC URL in Settings.' });
+      setError({ kind: 'network', title: 'Connection Failed', message: 'Could not connect to GenLayer.', hint: 'Check your VITE_GENLAYER_RPC_URL environment variable.' });
     }
   }, []);
 
   useEffect(() => {
-    // Restore saved settings from localStorage
-    const savedRpc      = localStorage.getItem('gl_rpc')  || DEFAULT_RPC_URL;
-    const savedContract = localStorage.getItem('gl_addr') || DEFAULT_CONTRACT;
-    setRpcUrl(savedRpc);
-    setContractAddress(savedContract);
-    setRpcInput(savedRpc);
-    setContractInput(savedContract);
-    initClient(savedRpc);
+    initClient(DEFAULT_RPC_URL);
   }, []);
 
   // ── Image upload ─────────────────────────────────────────────────────────────
@@ -128,11 +118,11 @@ export default function App() {
   // ── AI image description ──────────────────────────────────────────────────
   const describeImage = async (): Promise<string> => {
     if (!imageData) return inputDesc;
-    setScanStep('Mistral AI: reading image…');
-    addLog('Sending image to Mistral Pixtral for analysis…');
+    setScanStep('AI Vision: reading image…');
+    addLog('Sending image to AI vision model…');
 
     const form = new FormData();
-    // Pass optional user context as prompt — Mistral builds its own detection prompt
+    // Pass optional user context as prompt
     if (inputDesc) form.append('prompt', inputDesc);
     const bytes = atob(imageData.base64);
     const arr   = new Uint8Array(bytes.length);
@@ -148,14 +138,14 @@ export default function App() {
       throw Object.assign(new Error(errMsg), { kind });
     }
 
-    addLog('Image analyzed by Mistral Pixtral ✓');
+    addLog('Image analyzed by AI vision ✓');
     return data.text;
   };
 
   // ── Scan ─────────────────────────────────────────────────────────────────────
   const handleScan = async () => {
-    if (!client)          { setError({ kind: 'network', title: 'Not Connected', message: 'GenLayer client is not ready yet.', hint: 'Wait a moment or check the RPC URL in Settings.' }); return; }
-    if (!contractAddress) { setError({ kind: 'general', title: 'No Contract Address', message: 'The ScamDetector contract address is not configured.', hint: 'Open Settings and paste your deployed contract address.' }); setShowSettings(true); return; }
+    if (!client)          { setError({ kind: 'network', title: 'Not Connected', message: 'GenLayer client is not ready yet.', hint: 'The connection will retry automatically.' }); return; }
+    if (!contractAddress) { setError({ kind: 'general', title: 'No Contract Address', message: 'The ScamDetector contract address is not configured.', hint: 'Set VITE_CONTRACT_ADDRESS in your environment variables.' }); return; }
     setIsScanning(true);
     setError(null);
     setResult(null);
@@ -183,7 +173,7 @@ export default function App() {
       addLog(`Calling ${fn}() on contract ${contractAddress.slice(0,10)}… arg length: ${arg.length}`);
 
       // Re-create client fresh before each contract call to avoid stale state
-      // (especially important for image tab which has a long Gemini pre-step)
+      // (especially important for image tab which has a long AI vision pre-step)
       const { createClient: mkClient, createAccount: mkAccount } = await import('genlayer-js');
       const { studionet: snet, testnetAsimov: tnet } = await import('genlayer-js/chains');
       const freshChain = rpcUrl.includes('testnet') ? tnet : snet;
@@ -243,8 +233,8 @@ export default function App() {
         setError({
           kind: 'quota',
           title: "Monthly Image Scan Limit Reached",
-          message: "The Mistral AI vision service has hit its monthly free-tier limit. The platform is working perfectly — this resets on the 1st of next month.",
-          hint: "Use the Message or URL tabs in the meantime, or upgrade at console.mistral.ai for unlimited scans."
+          message: "The AI vision service has hit its monthly free-tier limit. The platform is working perfectly — this resets on the 1st of next month.",
+          hint: "Use the Message or URL tabs in the meantime — they work without limits."
         });
       }
       // Receipt extraction failed
@@ -262,7 +252,7 @@ export default function App() {
           kind: 'contract',
           title: 'Contract Error',
           message: 'The smart contract encountered an issue.',
-          hint: 'Verify the contract address in Settings matches the network you deployed to.'
+          hint: 'Verify VITE_CONTRACT_ADDRESS matches the network you deployed to.'
         });
       }
       // Generic network error
@@ -271,7 +261,7 @@ export default function App() {
           kind: 'network',
           title: 'Network Error',
           message: 'Could not reach the GenLayer network.',
-          hint: 'Check your RPC URL in Settings.'
+          hint: 'Check your VITE_GENLAYER_RPC_URL environment variable.'
         });
       }
       // Fallback
@@ -288,14 +278,6 @@ export default function App() {
     }
   };
 
-  const saveSettings = () => {
-    localStorage.setItem('gl_rpc',  rpcInput);
-    localStorage.setItem('gl_addr', contractInput);
-    setRpcUrl(rpcInput);
-    setContractAddress(contractInput);
-    setShowSettings(false);
-    initClient(rpcInput);
-  };
 
   const sc = result ? statusColor(result.classification) : null;
 
@@ -327,9 +309,6 @@ export default function App() {
               {rpcStatus === 'connected' ? 'CONNECTED' : rpcStatus === 'failed' ? 'DISCONNECTED' : 'CONNECTING…'}
             </span>
           </div>
-          <button onClick={() => setShowSettings(true)} className="p-2 opacity-60 hover:opacity-100 transition-opacity" style={{ border: '1px solid rgba(255,255,255,0.1)' }}>
-            <Settings className="w-4 h-4" />
-          </button>
         </div>
       </header>
 
@@ -419,7 +398,7 @@ export default function App() {
                     placeholder="// Optional: describe context about the image…"
                     value={inputDesc} onChange={e => setInputDesc(e.target.value)}
                   />
-                  <p className="text-xs opacity-40" style={{ fontFamily: 'var(--font-mono)', color: '#00ff88' }}>// Gemini AI will read the image, then GenLayer validators reach consensus</p>
+                  <p className="text-xs opacity-40" style={{ fontFamily: 'var(--font-mono)', color: '#00ff88' }}>// AI will read the image, then GenLayer validators reach consensus</p>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -559,89 +538,6 @@ export default function App() {
           </div>
         </div>
       </main>
-
-      {/* ── Settings Modal ── */}
-      <AnimatePresence>
-        {showSettings && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-6"
-            style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)' }}
-            onClick={e => e.target === e.currentTarget && setShowSettings(false)}
-          >
-            <motion.div initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 20 }}
-              className="w-full max-w-lg p-8 flex flex-col gap-6"
-              style={{ background: '#0f0f1a', border: '1px solid rgba(255,255,255,0.12)' }}
-            >
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="font-black text-xl tracking-tight">Node Settings</div>
-                  <div className="text-xs opacity-40 mt-1" style={{ fontFamily: 'var(--font-mono)' }}>// Configure GenLayer connection</div>
-                </div>
-                <button onClick={() => setShowSettings(false)} className="p-2 opacity-40 hover:opacity-100 transition-opacity">
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              {/* RPC URL */}
-              <div className="flex flex-col gap-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold tracking-widest uppercase opacity-60" style={{ fontFamily: 'var(--font-mono)' }}>RPC Endpoint</label>
-                  <div className="flex items-center gap-2">
-                    <div className="w-1.5 h-1.5 rounded-full" style={{ background: rpcStatus === 'connected' ? '#00ff88' : rpcStatus === 'failed' ? '#ff2d55' : '#888' }} />
-                    <span className="text-xs opacity-50" style={{ fontFamily: 'var(--font-mono)' }}>
-                      {rpcStatus === 'connected' ? 'active' : rpcStatus === 'failed' ? 'offline' : 'checking…'}
-                    </span>
-                  </div>
-                </div>
-                <input type="text" value={rpcInput} onChange={e => setRpcInput(e.target.value)}
-                  className="w-full p-4 bg-transparent outline-none text-sm"
-                  style={{ border: '1px solid rgba(255,255,255,0.12)', fontFamily: 'var(--font-mono)', color: '#e8e8f0' }}
-                  placeholder="https://studio.genlayer.com/api"
-                />
-                <div className="text-xs opacity-30 leading-relaxed" style={{ fontFamily: 'var(--font-mono)' }}>
-                  Studionet: https://studio.genlayer.com/api<br />
-                  Testnet:   https://rpc.testnet.genlayer.com
-                </div>
-              </div>
-
-              {/* Contract address */}
-              <div className="flex flex-col gap-2">
-                <label className="text-xs font-bold tracking-widest uppercase opacity-60" style={{ fontFamily: 'var(--font-mono)' }}>ScamDetector Contract Address</label>
-                <input type="text" value={contractInput} onChange={e => setContractInput(e.target.value)}
-                  className="w-full p-4 bg-transparent outline-none text-sm"
-                  style={{ border: '1px solid rgba(255,255,255,0.12)', fontFamily: 'var(--font-mono)', color: '#e8e8f0' }}
-                  placeholder="0x…"
-                />
-                <div className="text-xs opacity-30" style={{ fontFamily: 'var(--font-mono)' }}>
-                  Deploy ScamDetector.py on GenLayer Studio and paste the address here.
-                </div>
-              </div>
-
-              {/* Info box */}
-              <div className="p-4 text-xs leading-relaxed" style={{ border: '1px solid rgba(0,255,136,0.2)', background: 'rgba(0,255,136,0.04)', color: '#00ff88', fontFamily: 'var(--font-mono)' }}>
-                <div className="font-bold mb-2">// HOW TO DEPLOY YOUR CONTRACT</div>
-                <ol className="opacity-70 space-y-1 list-decimal list-inside">
-                  <li>Go to studio.genlayer.com</li>
-                  <li>Upload ScamDetector.py and click Deploy</li>
-                  <li>Copy the deployed contract address</li>
-                  <li>Paste it above and save</li>
-                </ol>
-                <div className="mt-3 opacity-50">
-                  For Vercel: set VITE_GENLAYER_RPC_URL and VITE_CONTRACT_ADDRESS in your project's Environment Variables, then redeploy.
-                </div>
-              </div>
-
-              <button onClick={saveSettings}
-                className="w-full py-4 font-bold tracking-widest uppercase text-sm flex items-center justify-center gap-2 transition-all"
-                style={{ border: '1px solid #00ff88', background: 'rgba(0,255,136,0.08)', color: '#00ff88', fontFamily: 'var(--font-mono)', letterSpacing: '0.2em' }}
-              >
-                <RefreshCw className="w-4 h-4" />
-                Save & Reconnect
-              </button>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       {/* ── Footer ── */}
       <footer className="px-6 py-4 border-t border-white/10 flex items-center justify-between">
