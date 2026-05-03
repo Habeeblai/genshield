@@ -128,27 +128,28 @@ export default function App() {
   // ── AI image description ──────────────────────────────────────────────────
   const describeImage = async (): Promise<string> => {
     if (!imageData) return inputDesc;
-    setScanStep('AI Vision: reading image…');
-    addLog('Sending image to Gemini for description…');
+    setScanStep('Mistral AI: reading image…');
+    addLog('Sending image to Mistral Pixtral for analysis…');
+
     const form = new FormData();
-    form.append('prompt', 'Analyze this image for scam indicators. Describe text, logos, UI elements, suspicious signs, wallet addresses, fake urgency, and anything relevant to fraud detection. Be specific and thorough.');
-    form.append('type', 'image');
+    // Pass optional user context as prompt — Mistral builds its own detection prompt
+    if (inputDesc) form.append('prompt', inputDesc);
     const bytes = atob(imageData.base64);
     const arr   = new Uint8Array(bytes.length);
     for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
     form.append('image', new Blob([arr], { type: imageData.mimeType }), 'upload.png');
+
     const res  = await fetch('/api/analyze', { method: 'POST', body: form });
     const data = await res.json();
+
     if (!res.ok) {
       const errMsg: string = data.error || 'Image analysis failed';
-      if (errMsg.includes('429') || errMsg.includes('quota') || errMsg.includes('Too Many Requests')) {
-        throw Object.assign(new Error(errMsg), { kind: 'quota' });
-      }
-      throw new Error(errMsg);
+      const kind: string   = data.kind  || 'general';
+      throw Object.assign(new Error(errMsg), { kind });
     }
-    addLog('Image described by AI ✓');
-    const combined = [inputDesc && `User context: ${inputDesc}`, data.text].filter(Boolean).join('\n\n');
-    return combined;
+
+    addLog('Image analyzed by Mistral Pixtral ✓');
+    return data.text;
   };
 
   // ── Scan ─────────────────────────────────────────────────────────────────────
@@ -241,9 +242,9 @@ export default function App() {
       if (err.kind === 'quota' || raw.includes('429') || raw.includes('quota') || raw.includes('Too Many Requests')) {
         setError({
           kind: 'quota',
-          title: "Daily AI Vision Limit Reached",
-          message: "The Gemini AI vision service has hit its daily free-tier quota. The platform is working perfectly — this limit resets automatically.",
-          hint: "Try again tomorrow, or use the Message or URL tabs which don't use Gemini."
+          title: "Monthly Image Scan Limit Reached",
+          message: "The Mistral AI vision service has hit its monthly free-tier limit. The platform is working perfectly — this resets on the 1st of next month.",
+          hint: "Use the Message or URL tabs in the meantime, or upgrade at console.mistral.ai for unlimited scans."
         });
       }
       // Receipt extraction failed
